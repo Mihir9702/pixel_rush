@@ -1,12 +1,14 @@
 import pygame as p
+import math
 from random import randint
+from pytmx.util_pygame import load_pygame
 
 p.init()
 
 run = True
-width = 960
+width = 1080
 height = 720
-TILE_SIZE = 24
+TILE_SIZE = 18
 CLOCK = p.time.Clock()
 
 window = p.display.set_mode((width, height))
@@ -31,12 +33,16 @@ class SkyTile(Tile):
 
     def __init__(self, x, y, w, h, img):
         super().__init__(x, y, w, h, img)
+        self.speed = 0.75
 
     # Draw sky tiles on top half of screen
     def draw(self, window):
         if self.y < height:
             super().draw(window)
             # p.draw.rect(window, (255, 200, 255), (self.x, self.y, self.w, self.h), 1)
+
+    def update(self):
+        self.x -= self.speed
 
 
 class GroundTile(Tile):
@@ -45,6 +51,7 @@ class GroundTile(Tile):
 
     def __init__(self, x, y, w, h, img):
         super().__init__(x, y, w, h, img)
+        self.speed = 0.25
 
     # Draw ground tiles on bottom half of screen
     def draw(self, window):
@@ -57,6 +64,9 @@ class GroundTile(Tile):
                     player.x, player.y = player.prev_x, player.prev_y
                     player.velocity_y = 0
 
+    def update(self):
+        self.x -= self.speed
+
 
 class ViewTile(Tile):
     imgs = [p.image.load("img/bg_view_left.png"),
@@ -64,6 +74,7 @@ class ViewTile(Tile):
 
     def __init__(self, x, y, w, h, img):
         super().__init__(x, y, w, h, img)
+        self.speed = 0.5
 
     # draw view tiles right above ground tiles
     def draw(self, window):
@@ -71,8 +82,11 @@ class ViewTile(Tile):
             super().draw(window)
             # p.draw.rect(window, (255, 255, 200), (self.x, self.y, self.w, self.h), 1)
 
+    def update(self):
+        self.x -= self.speed
 
-def create_tiles(tile_type):
+
+def create_tiles(tile_type, col=False):
     tiles = []
     for row in range(0, width, TILE_SIZE):
         for col in range(0, height, TILE_SIZE):
@@ -81,10 +95,12 @@ def create_tiles(tile_type):
     return tiles
 
 
-def draw_tiles(tiles):
-    for row in tiles:
-        for tile in row:
-            tile.draw(window)
+def draw_tiles(*tile_lists):
+    for tiles in tile_lists:
+        for row in tiles:
+            for tile in row:
+                tile.draw(window)
+                tile.update()
 
 
 sky_tiles = [create_tiles(SkyTile)]
@@ -103,12 +119,15 @@ class GameSprite:
 
 class Player(GameSprite):
     imgs = {
-        'left': p.image.load('img/playerLeft.png'),
-        'right': p.image.load('img/playerRight.png')
+        'left': p.image.load('img/player_left.png'),
+        'right': p.image.load('img/player_right.png'),
+        'left_jump': p.image.load('img/player_left_jump.png'),
+        'right_jump': p.image.load('img/player_right_jump.png')
     }
 
     def __init__(self, x, y, w, h, img):
         super().__init__(x, y, w, h, img)
+        self.rect = p.Rect(x, y, w, h)
         self.speed = 7
         self.prev_x = x
         self.prev_y = y
@@ -124,14 +143,21 @@ class Player(GameSprite):
     def move(self):
         self.prev_x, self.prev_y = self.x, self.y  # save previous position
 
-        # check if player is out of bounds
-        if self.x < 0 or self.x > width - self.w:
-            self.x = self.prev_x
-        if self.y < 0 or self.y > height - self.h:
-            self.y = self.prev_y
-            self.velocity_y = 0
+        self.rect.topleft = (self.x, self.y)
 
+        # check if player is out of bounds
+        if self.rect.left < 0:
+            self.x = 0
+        elif self.rect.right > width:
+            self.x = width - self.w
+
+        # check if player is jumping
         if self.jumping:
+            if self.img == self.imgs['left']:
+                self.img = self.imgs['left_jump']
+            elif self.img == self.imgs['right']:
+                self.img = self.imgs['right_jump']
+
             self.y -= self.velocity_y
             self.velocity_y -= self.gravity
             if self.velocity_y < -self.jump_height:
@@ -139,33 +165,39 @@ class Player(GameSprite):
                 self.velocity_y = self.jump_height
 
 
-player = Player(width // 2 - TILE_SIZE // 2, height // 1.5, TILE_SIZE, TILE_SIZE,
-                p.image.load('img/playerRight.png'))
+player = Player(width // 4 - TILE_SIZE * 2, height // 1.5, TILE_SIZE, TILE_SIZE,
+                p.image.load('img/player_right.png'))
 
+
+TILES_AHEAD = 5
 
 while True:
     window.fill((0, 0, 0))
-    CLOCK.tick(60)
 
     for e in p.event.get():
         if e.type == p.QUIT:
             p.quit()
 
-    # Draw tiles
-    draw_tiles(sky_tiles)
-    draw_tiles(view_tiles)
-    draw_tiles(ground_tiles)
+    draw_tiles(sky_tiles, view_tiles, ground_tiles)
 
-    # Get keys pressed
+    for row in sky_tiles:
+        if row[0].x < 0:
+            sky_tiles.remove(row)
+            sky_tiles.append(create_tiles(SkyTile))
+
+    for row in view_tiles:
+        if row[0].x < 0:
+            view_tiles.remove(row)
+            view_tiles.append(create_tiles(ViewTile))
+
+    for row in ground_tiles:
+        if row[0].x < 0:
+            ground_tiles.remove(row)
+            ground_tiles.append(create_tiles(GroundTile))
+
     keys_pressed = p.key.get_pressed()
 
-    if keys_pressed[97]:  # left
-        player.img = player.imgs['left']
-        player.x -= player.speed
-    elif keys_pressed[100]:  # right
-        player.img = player.imgs['right']
-        player.x += player.speed
-    elif keys_pressed[119]:  # up
+    if keys_pressed[119]:  # up
         player.jumping = True
     elif keys_pressed[115]:  # down
         pass
@@ -173,5 +205,5 @@ while True:
     player.draw(window)
     player.move()
 
-    # Update window
+    CLOCK.tick(60)
     p.display.update()
