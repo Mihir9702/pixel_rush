@@ -2,110 +2,59 @@ import pygame as p
 import math
 from random import randint
 from pytmx.util_pygame import load_pygame
+from pytmx import TiledTileLayer
 
 p.init()
 
 run = True
-width = 1080
+width = 960
 height = 720
 TILE_SIZE = 18
 CLOCK = p.time.Clock()
 
 window = p.display.set_mode((width, height))
 p.display.set_caption("Tiles")
+p.transform.scale(window, (TILE_SIZE * 2, TILE_SIZE * 2))
+
+tmx_map = load_pygame('map.tmx')
 
 
-class Tile:
-    def __init__(self, x, y, w, h, img):
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
-        self.img = img
+def key_handler():
+    keys = p.key.get_pressed()
 
-    def draw(self, window):
-        window.blit(self.img, (self.x, self.y))
+    if keys[p.K_a]:
+        player.velocity_x -= player.speed
+        player.img = player.imgs['left']
+    elif keys[p.K_d]:
+        player.velocity_x += player.speed
+        player.img = player.imgs['right']
+    else:
+        player.velocity_x = 0
 
-
-class SkyTile(Tile):
-    imgs = [p.image.load("img/bg_sky_left.png"),
-            p.image.load("img/bg_sky_right.png")]
-
-    def __init__(self, x, y, w, h, img):
-        super().__init__(x, y, w, h, img)
-        self.speed = 0.75
-
-    # Draw sky tiles on top half of screen
-    def draw(self, window):
-        if self.y < height:
-            super().draw(window)
-            # p.draw.rect(window, (255, 200, 255), (self.x, self.y, self.w, self.h), 1)
-
-    def update(self):
-        self.x -= self.speed
+    if keys[p.K_w] and not player.jumping:
+        player.jumping = True
+        player.velocity_y = player.jump_height
 
 
-class GroundTile(Tile):
-    imgs = [p.image.load("img/bg_ground_left.png"),
-            p.image.load("img/bg_ground_right.png")]
+class Camera:
+    def __init__(self, width, height):
+        self.camera = p.Rect(0, 0, width, height)
+        self.width = width
+        self.height = height
 
-    def __init__(self, x, y, w, h, img):
-        super().__init__(x, y, w, h, img)
-        self.speed = 0.25
+    def apply(self, entity):
+        return entity.rect.move(self.camera.topleft)
 
-    # Draw ground tiles on bottom half of screen
-    def draw(self, window):
-        if self.y > height // 1.5:
-            super().draw(window)
+    def update(self, target):
+        x = -target.x + int(self.width / 2)
+        y = -target.y + int(self.height / 2)
 
-            # first row of ground tiles
-            if self.y == height // 1.5 + TILE_SIZE:
-                if player.y > height // 1.5:
-                    player.x, player.y = player.prev_x, player.prev_y
-                    player.velocity_y = 0
+        x = min(0, x)
+        y = min(0, y)
+        x = max(-(tmx_map.width * tmx_map.tilewidth - self.width), x)
+        y = max(-(tmx_map.height * tmx_map.tileheight - self.height), y)
 
-    def update(self):
-        self.x -= self.speed
-
-
-class ViewTile(Tile):
-    imgs = [p.image.load("img/bg_view_left.png"),
-            p.image.load("img/bg_view_right.png")]
-
-    def __init__(self, x, y, w, h, img):
-        super().__init__(x, y, w, h, img)
-        self.speed = 0.5
-
-    # draw view tiles right above ground tiles
-    def draw(self, window):
-        if self.y > height // 1.5 - TILE_SIZE:
-            super().draw(window)
-            # p.draw.rect(window, (255, 255, 200), (self.x, self.y, self.w, self.h), 1)
-
-    def update(self):
-        self.x -= self.speed
-
-
-def create_tiles(tile_type, col=False):
-    tiles = []
-    for row in range(0, width, TILE_SIZE):
-        for col in range(0, height, TILE_SIZE):
-            tiles.append(tile_type(row, col, TILE_SIZE, TILE_SIZE,
-                                   tile_type.imgs[randint(0, 1)]))
-    return tiles
-
-
-def draw_tiles(*tile_lists):
-    for tiles in tile_lists:
-        for row in tiles:
-            for tile in row:
-                tile.draw(window)
-                tile.update()
-
-
-sky_tiles = [create_tiles(SkyTile)]
-view_tiles = [create_tiles(ViewTile)]
-ground_tiles = [create_tiles(GroundTile)]
+        self.camera = p.Rect(x, y, self.width, self.height)
 
 
 class GameSprite:
@@ -115,6 +64,16 @@ class GameSprite:
         self.w = w
         self.h = h
         self.img = img
+
+
+class Tile(GameSprite):
+    def __init__(self, x, y, w, h, img):
+        super().__init__(x, y, w, h, img)
+        self.rect = p.Rect(x, y, w, h)
+
+    def draw(self, window):
+        window.blit(self.img, (self.x, self.y))
+        # p.draw.rect(window, (255, 0, 0), (self.x, self.y, self.w, self.h), 1)
 
 
 class Player(GameSprite):
@@ -128,11 +87,12 @@ class Player(GameSprite):
     def __init__(self, x, y, w, h, img):
         super().__init__(x, y, w, h, img)
         self.rect = p.Rect(x, y, w, h)
-        self.speed = 7
+        self.speed = 0.3
         self.prev_x = x
         self.prev_y = y
         self.gravity = 1  # gravity constant
-        self.jump_height = 20
+        self.jump_height = 12
+        self.velocity_x = 0
         self.velocity_y = self.jump_height
         self.jumping = False
 
@@ -143,7 +103,11 @@ class Player(GameSprite):
     def move(self):
         self.prev_x, self.prev_y = self.x, self.y  # save previous position
 
-        self.rect.topleft = (self.x, self.y)
+        self.velocity_x *= 0.9  # friction
+        self.velocity_y += self.gravity
+
+        self.x += self.velocity_x
+        self.y += self.velocity_y
 
         # check if player is out of bounds
         if self.rect.left < 0:
@@ -165,11 +129,38 @@ class Player(GameSprite):
                 self.velocity_y = self.jump_height
 
 
-player = Player(width // 4 - TILE_SIZE * 2, height // 1.5, TILE_SIZE, TILE_SIZE,
-                p.image.load('img/player_right.png'))
+player = Player(TILE_SIZE * 2, 250,
+                18, 18, Player.imgs['right'])
+camera = Camera(width, height)
 
 
-TILES_AHEAD = 5
+def draw_tiles(tiles):
+    for tile in tiles:
+        window.blit(tile.img, camera.apply(tile))
+
+
+def load_map():
+    tiles, grass_tiles = [], []
+
+    for layer in tmx_map.visible_layers:
+        if isinstance(layer, TiledTileLayer):
+            for x, y, image in layer.tiles():
+                if image:
+                    if layer.name == 'grass':
+                        tile = Tile(x * TILE_SIZE, y * TILE_SIZE,
+                                    TILE_SIZE, TILE_SIZE, image)
+                        grass_tiles.append(tile)
+                    else:
+                        tile = Tile(x * TILE_SIZE, y * TILE_SIZE,
+                                    TILE_SIZE, TILE_SIZE, image)
+                        tiles.append(tile)
+
+    return tiles, grass_tiles
+
+
+offset_x = 0
+scroll_area_width = 200
+all_tiles, grass_tiles = load_map()
 
 while True:
     window.fill((0, 0, 0))
@@ -178,29 +169,26 @@ while True:
         if e.type == p.QUIT:
             p.quit()
 
-    draw_tiles(sky_tiles, view_tiles, ground_tiles)
+    key_handler()
+    # draw_tiles(all_tiles)
+    draw_tiles(grass_tiles)
 
-    for row in sky_tiles:
-        if row[0].x < 0:
-            sky_tiles.remove(row)
-            sky_tiles.append(create_tiles(SkyTile))
+    # Check if player is above the grass tiles (grass_tile.height = 40)
 
-    for row in view_tiles:
-        if row[0].x < 0:
-            view_tiles.remove(row)
-            view_tiles.append(create_tiles(ViewTile))
+    # Scroll the background when the player moves to the right
+    if ((player.rect.right - offset_x >= width - 200 and player.velocity_x > 0)
+            or (player.rect.left - offset_x <= 200 and player.velocity_x < 0)):
+        offset_x += player.velocity_x + 2
 
-    for row in ground_tiles:
-        if row[0].x < 0:
-            ground_tiles.remove(row)
-            ground_tiles.append(create_tiles(GroundTile))
+    for tile in grass_tiles:
+        if player.y + player.h >= tile.y and player.y <= tile.y + tile.h:
+            if player.x + player.w >= tile.x and player.x <= tile.x + tile.w:
+                player.x, player.y = player.prev_x, player.prev_y
+                player.velocity_y = 0
+                player.jumping = False
 
-    keys_pressed = p.key.get_pressed()
-
-    if keys_pressed[119]:  # up
-        player.jumping = True
-    elif keys_pressed[115]:  # down
-        pass
+    # Update the camera to follow the player
+    camera.update(player)
 
     player.draw(window)
     player.move()

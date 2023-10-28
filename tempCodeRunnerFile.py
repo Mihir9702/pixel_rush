@@ -1,1 +1,2 @@
-8
+            else:
+                player.velocity_y = 0
