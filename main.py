@@ -3,6 +3,7 @@ import math
 from random import randint
 from pytmx.util_pygame import load_pygame
 from pytmx import TiledTileLayer
+from tiles import Tile
 
 p.init()
 
@@ -36,52 +37,12 @@ def key_handler():
         player.velocity_y = player.jump_height
 
 
-class Camera:
-    def __init__(self, width, height):
-        self.camera = p.Rect(0, 0, width, height)
-        self.width = width
-        self.height = height
-
-    def apply(self, entity):
-        return entity.rect.move(self.camera.topleft)
-
-    def update(self, target):
-        x = -target.x + int(self.width / 2)
-        y = -target.y + int(self.height / 2)
-
-        x = min(0, x)
-        y = min(0, y)
-        x = max(-(tmx_map.width * tmx_map.tilewidth - self.width), x)
-        y = max(-(tmx_map.height * tmx_map.tileheight - self.height), y)
-
-        self.camera = p.Rect(x, y, self.width, self.height)
-
-
-class GameSprite:
-    def __init__(self, x, y, w, h, img):
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
-        self.img = img
-
-
-class Tile(GameSprite):
-    def __init__(self, x, y, w, h, img):
-        super().__init__(x, y, w, h, img)
-        self.rect = p.Rect(x, y, w, h)
-
-    def draw(self, window):
-        window.blit(self.img, (self.x, self.y))
-        # p.draw.rect(window, (255, 0, 0), (self.x, self.y, self.w, self.h), 1)
-
-
-class Player(GameSprite):
+class Player():
     imgs = {
-        'left': p.image.load('img/player_left.png'),
-        'right': p.image.load('img/player_right.png'),
-        'left_jump': p.image.load('img/player_left_jump.png'),
-        'right_jump': p.image.load('img/player_right_jump.png')
+        'left': p.image.load('img/player_left.png').convert_alpha(),
+        'right': p.image.load('img/player_right.png').convert_alpha(),
+        'left_jump': p.image.load('img/player_left_jump.png').convert_alpha(),
+        'right_jump': p.image.load('img/player_right_jump.png').convert_alpha()
     }
 
     def __init__(self, x, y, w, h, img):
